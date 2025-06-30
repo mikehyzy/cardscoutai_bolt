@@ -19,3 +19,4 @@ EOF
 cat > docker-compose.yml
 
 ~project
+pwd
