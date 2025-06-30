@@ -14,3 +14,4 @@ services:
       - ./n8n:/home/node/.n8n
 
 docker compose up -d n8n
+
