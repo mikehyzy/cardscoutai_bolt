@@ -16,3 +16,4 @@ services:
 EOF
 
 
+cat > docker-compose.yml
