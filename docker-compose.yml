@@ -14,3 +14,4 @@ services:
     volumes:
       - ./n8n:/home/node/.n8n               # keeps flows in git
 EOF
+
