@@ -18,3 +18,4 @@ EOF
 
 cat > docker-compose.yml
 
+~project
