@@ -129,6 +129,13 @@ export default function CardScanner() {
     setIsProcessing(true)
     
     try {
+      // Get the current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        throw new Error('Authentication required. Please log in.')
+      }
+
       // Convert data URL to blob
       const response = await fetch(capturedImage)
       const blob = await response.blob()
@@ -137,9 +144,12 @@ export default function CardScanner() {
       const formData = new FormData()
       formData.append('image', blob, 'card.jpg')
 
-      // Call our edge function
+      // Call our edge function with proper authentication
       const { data, error } = await supabase.functions.invoke('card-scan', {
-        body: formData
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
       })
 
       if (error) {
