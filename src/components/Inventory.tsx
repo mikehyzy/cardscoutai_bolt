@@ -15,8 +15,11 @@ import {
   DollarSign,
   Calendar,
   Award,
-  Package
+  Package,
+  Users,
+  BarChart3
 } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 interface InventoryItem {
   id: string
@@ -34,6 +37,33 @@ interface InventoryItem {
   status: 'owned' | 'listed' | 'sold'
   profit_loss: number
   profit_percentage: number
+}
+
+interface MinorLeaguePlayer {
+  id: string
+  player_name: string
+  team: string
+  position: string
+  level: string
+  age: number
+  bats: string
+  throws: string
+  acquisition_date: string
+  acquisition_cost: number
+  current_value: number
+  status: 'active' | 'traded' | 'released' | 'promoted'
+  notes: string
+  profit_loss: number
+  profit_percentage: number
+  stats?: {
+    games: number
+    at_bats: number
+    hits: number
+    home_runs: number
+    rbis: number
+    batting_average: number
+    ops: number
+  }
 }
 
 // Sample inventory data
@@ -158,11 +188,71 @@ const gradeColors = {
 
 export default function Inventory() {
   const [inventory, setInventory] = useState<InventoryItem[]>(sampleInventory)
+  const [minorLeaguePlayers, setMinorLeaguePlayers] = useState<MinorLeaguePlayer[]>([])
+  const [activeTab, setActiveTab] = useState<'cards' | 'players'>('cards')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sortBy, setSortBy] = useState<string>('purchase_date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showFilters, setShowFilters] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  // Fetch minor league players
+  useEffect(() => {
+    fetchMinorLeaguePlayers()
+  }, [])
+
+  const fetchMinorLeaguePlayers = async () => {
+    setLoading(true)
+    try {
+      const { data: players, error: playersError } = await supabase
+        .from('minor_league_players')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (playersError) throw playersError
+
+      if (players) {
+        // Fetch stats for each player
+        const playersWithStats = await Promise.all(
+          players.map(async (player) => {
+            const { data: stats } = await supabase
+              .from('minor_league_stats')
+              .select('*')
+              .eq('player_id', player.id)
+              .eq('season', 2024)
+              .single()
+
+            const profit_loss = player.current_value - player.acquisition_cost
+            const profit_percentage = player.acquisition_cost > 0 
+              ? (profit_loss / player.acquisition_cost) * 100 
+              : 0
+
+            return {
+              ...player,
+              profit_loss,
+              profit_percentage,
+              stats: stats ? {
+                games: stats.games,
+                at_bats: stats.at_bats,
+                hits: stats.hits,
+                home_runs: stats.home_runs,
+                rbis: stats.rbis,
+                batting_average: stats.batting_average,
+                ops: stats.ops
+              } : undefined
+            }
+          })
+        )
+
+        setMinorLeaguePlayers(playersWithStats)
+      }
+    } catch (error) {
+      console.error('Error fetching minor league players:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredAndSortedInventory = inventory
     .filter(item => {
@@ -187,37 +277,65 @@ export default function Inventory() {
       }
     })
 
+  const filteredMinorLeaguePlayers = minorLeaguePlayers
+    .filter(player => {
+      const matchesSearch = player.player_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           player.team.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || player.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+
   const totalValue = inventory.reduce((sum, item) => sum + item.current_value, 0)
   const totalCost = inventory.reduce((sum, item) => sum + item.purchase_price, 0)
   const totalProfit = totalValue - totalCost
   const totalProfitPercentage = ((totalProfit / totalCost) * 100)
 
+  const minorLeagueValue = minorLeaguePlayers.reduce((sum, player) => sum + player.current_value, 0)
+  const minorLeagueCost = minorLeaguePlayers.reduce((sum, player) => sum + player.acquisition_cost, 0)
+  const minorLeagueProfit = minorLeagueValue - minorLeagueCost
+
   const stats = [
     {
       title: 'Total Items',
-      value: inventory.length.toString(),
-      subtitle: `${inventory.filter(i => i.status === 'owned').length} owned`,
+      value: activeTab === 'cards' 
+        ? inventory.length.toString()
+        : minorLeaguePlayers.length.toString(),
+      subtitle: activeTab === 'cards'
+        ? `${inventory.filter(i => i.status === 'owned').length} owned`
+        : `${minorLeaguePlayers.filter(p => p.status === 'active').length} active`,
       icon: Package,
       color: 'from-blue-400 to-cyan-500'
     },
     {
       title: 'Portfolio Value',
-      value: `$${totalValue.toLocaleString()}`,
-      subtitle: `Cost: $${totalCost.toLocaleString()}`,
+      value: activeTab === 'cards'
+        ? `$${totalValue.toLocaleString()}`
+        : `$${minorLeagueValue.toLocaleString()}`,
+      subtitle: activeTab === 'cards'
+        ? `Cost: $${totalCost.toLocaleString()}`
+        : `Cost: $${minorLeagueCost.toLocaleString()}`,
       icon: DollarSign,
       color: 'from-green-400 to-emerald-500'
     },
     {
       title: 'Unrealized P&L',
-      value: `$${totalProfit.toLocaleString()}`,
-      subtitle: `${totalProfitPercentage.toFixed(1)}% return`,
-      icon: totalProfit >= 0 ? TrendingUp : TrendingDown,
-      color: totalProfit >= 0 ? 'from-green-400 to-emerald-500' : 'from-red-400 to-red-500'
+      value: activeTab === 'cards'
+        ? `$${totalProfit.toLocaleString()}`
+        : `$${minorLeagueProfit.toLocaleString()}`,
+      subtitle: activeTab === 'cards'
+        ? `${totalProfitPercentage.toFixed(1)}% return`
+        : `${minorLeagueCost > 0 ? ((minorLeagueProfit / minorLeagueCost) * 100).toFixed(1) : 0}% return`,
+      icon: (activeTab === 'cards' ? totalProfit : minorLeagueProfit) >= 0 ? TrendingUp : TrendingDown,
+      color: (activeTab === 'cards' ? totalProfit : minorLeagueProfit) >= 0 ? 'from-green-400 to-emerald-500' : 'from-red-400 to-red-500'
     },
     {
-      title: 'Listed Items',
-      value: inventory.filter(i => i.status === 'listed').length.toString(),
-      subtitle: 'Active listings',
+      title: activeTab === 'cards' ? 'Listed Items' : 'Avg Age',
+      value: activeTab === 'cards'
+        ? inventory.filter(i => i.status === 'listed').length.toString()
+        : minorLeaguePlayers.length > 0 
+          ? `${Math.round(minorLeaguePlayers.reduce((sum, p) => sum + p.age, 0) / minorLeaguePlayers.length)}`
+          : '0',
+      subtitle: activeTab === 'cards' ? 'Active listings' : 'Years old',
       icon: Eye,
       color: 'from-orange-400 to-yellow-500'
     }
@@ -259,6 +377,33 @@ export default function Inventory() {
         transition={{ delay: 0.4 }}
         className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700"
       >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex bg-slate-700/50 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('cards')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'cards'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              <span>Baseball Cards</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('players')}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'players'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Minor League Players</span>
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
             <div className="relative flex-1 max-w-md">
@@ -278,10 +423,22 @@ export default function Inventory() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:border-green-500 focus:ring-1 focus:ring-green-500"
               >
-                <option value="all">All Status</option>
-                <option value="owned">Owned</option>
-                <option value="listed">Listed</option>
-                <option value="sold">Sold</option>
+                {activeTab === 'cards' ? (
+                  <>
+                    <option value="all">All Status</option>
+                    <option value="owned">Owned</option>
+                    <option value="listed">Listed</option>
+                    <option value="sold">Sold</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="traded">Traded</option>
+                    <option value="released">Released</option>
+                    <option value="promoted">Promoted</option>
+                  </>
+                )}
               </select>
               
               <select
@@ -289,10 +446,21 @@ export default function Inventory() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:border-green-500 focus:ring-1 focus:ring-green-500"
               >
-                <option value="purchase_date">Purchase Date</option>
-                <option value="current_value">Current Value</option>
-                <option value="profit_percentage">Profit %</option>
-                <option value="player_name">Player Name</option>
+                {activeTab === 'cards' ? (
+                  <>
+                    <option value="purchase_date">Purchase Date</option>
+                    <option value="current_value">Current Value</option>
+                    <option value="profit_percentage">Profit %</option>
+                    <option value="player_name">Player Name</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="acquisition_date">Acquisition Date</option>
+                    <option value="current_value">Current Value</option>
+                    <option value="profit_percentage">Profit %</option>
+                    <option value="player_name">Player Name</option>
+                  </>
+                )}
               </select>
               
               <button
@@ -306,12 +474,13 @@ export default function Inventory() {
           
           <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-blue-500 text-white font-medium rounded-lg hover:shadow-lg transition-all duration-200 flex items-center space-x-2">
             <Plus className="w-4 h-4" />
-            <span>Add Card</span>
+            <span>{activeTab === 'cards' ? 'Add Card' : 'Add Player'}</span>
           </button>
         </div>
       </motion.div>
 
-      {/* Inventory Grid */}
+      {/* Cards Grid */}
+      {activeTab === 'cards' && (
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredAndSortedInventory.map((item, index) => (
           <motion.div
@@ -391,16 +560,151 @@ export default function Inventory() {
           </motion.div>
         ))}
       </div>
+      )}
 
-      {filteredAndSortedInventory.length === 0 && (
+      {/* Minor League Players Grid */}
+      {activeTab === 'players' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredMinorLeaguePlayers.map((player, index) => (
+            <motion.div
+              key={player.id}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 + index * 0.05 }}
+              className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700 hover:border-slate-600 transition-all duration-300 group"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-white mb-1 group-hover:text-green-400 transition-colors">
+                    {player.player_name}
+                  </h3>
+                  <p className="text-sm text-slate-400 mb-2">{player.team} • {player.position}</p>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <span className={`px-2 py-1 rounded text-xs font-medium border ${
+                      player.status === 'active' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                      player.status === 'promoted' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                      player.status === 'traded' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                      'bg-red-500/20 text-red-400 border-red-500/30'
+                    }`}>
+                      {player.status.charAt(0).toUpperCase() + player.status.slice(1)}
+                    </span>
+                    <span className="px-2 py-1 rounded text-xs font-medium bg-slate-700/50 text-slate-300">
+                      {player.level} • Age {player.age}
+                    </span>
+                  </div>
+                </div>
+                <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors">
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">Acquisition Cost</p>
+                  <p className="text-lg font-bold text-white">${player.acquisition_cost}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">Current Value</p>
+                  <p className="text-lg font-bold text-white">${player.current_value}</p>
+                </div>
+              </div>
+
+              {player.stats && (
+                <div className="mb-4 p-3 bg-slate-700/30 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <BarChart3 className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-medium text-white">2024 Stats</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span className="text-slate-400">AVG:</span>
+                      <span className="text-white ml-1">{player.stats.batting_average.toFixed(3)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">HR:</span>
+                      <span className="text-white ml-1">{player.stats.home_runs}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">RBI:</span>
+                      <span className="text-white ml-1">{player.stats.rbis}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">OPS:</span>
+                      <span className="text-white ml-1">{player.stats.ops.toFixed(3)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">G:</span>
+                      <span className="text-white ml-1">{player.stats.games}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400">AB:</span>
+                      <span className="text-white ml-1">{player.stats.at_bats}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  {player.profit_loss >= 0 ? (
+                    <TrendingUp className="w-4 h-4 text-green-400" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-red-400" />
+                  )}
+                  <span className={`font-semibold ${player.profit_loss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ${Math.abs(player.profit_loss)} ({Math.abs(player.profit_percentage).toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400">{player.bats}/{player.throws}</p>
+                  <p className="text-xs text-slate-500">{new Date(player.acquisition_date).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-slate-700">
+                <div className="flex items-center space-x-1">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <span className="text-xs text-slate-400">
+                    {Math.floor((new Date().getTime() - new Date(player.acquisition_date).getTime()) / (1000 * 60 * 60 * 24))} days held
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button className="p-1 text-slate-400 hover:text-blue-400 transition-colors">
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button className="p-1 text-slate-400 hover:text-green-400 transition-colors">
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button className="p-1 text-slate-400 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {((activeTab === 'cards' && filteredAndSortedInventory.length === 0) || 
+        (activeTab === 'players' && filteredMinorLeaguePlayers.length === 0)) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center py-12"
         >
-          <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-slate-400 mb-2">No cards found</h3>
-          <p className="text-slate-500">Try adjusting your search or filters</p>
+          {activeTab === 'cards' ? (
+            <>
+              <Package className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-slate-400 mb-2">No cards found</h3>
+              <p className="text-slate-500">Try adjusting your search or filters</p>
+            </>
+          ) : (
+            <>
+              <Users className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-slate-400 mb-2">No players found</h3>
+              <p className="text-slate-500">Try adjusting your search or filters</p>
+            </>
+          )}
         </motion.div>
       )}
     </div>
