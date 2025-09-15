@@ -275,5 +275,117 @@ export type Database = {
         ops?: number
       }
     }
-  }
-}
+      minor_league_players: {
+        Row: {
+          id: string
+          user_id: string
+          player_name: string
+          team: string
+          position: string
+          level: string
+          age: number
+          bats: string
+          throws: string
+          acquisition_date: string
+          acquisition_cost: number
+          current_value: number
+          status: 'active' | 'traded' | 'released' | 'promoted'
+          notes: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          player_name: string
+          team: string
+          position: string
+          level: string
+          age: number
+          bats: string
+          throws: string
+          acquisition_date: string
+          acquisition_cost: number
+          current_value: number
+          status?: 'active' | 'traded' | 'released' | 'promoted'
+          notes?: string
+        }
+        Update: {
+          player_name?: string
+          team?: string
+          position?: string
+          level?: string
+          age?: number
+          bats?: string
+          throws?: string
+          acquisition_date?: string
+          acquisition_cost?: number
+          current_value?: number
+          status?: 'active' | 'traded' | 'released' | 'promoted'
+          notes?: string
+        }
+      }
+      minor_league_stats: {
+        Row: {
+          id: string
+          player_id: string
+          season: number
+          level: string
+          team: string
+          games: number
+          at_bats: number
+          hits: number
+          doubles: number
+          triples: number
+          home_runs: number
+          rbis: number
+          runs: number
+          walks: number
+          strikeouts: number
+          stolen_bases: number
+          batting_average: number
+          on_base_percentage: number
+          slugging_percentage: number
+          ops: number
+          created_at: string
+        }
+        Insert: {
+          player_id: string
+          season: number
+          level: string
+          team: string
+          games?: number
+          at_bats?: number
+          hits?: number
+          doubles?: number
+          triples?: number
+          home_runs?: number
+          rbis?: number
+          runs?: number
+          walks?: number
+          strikeouts?: number
+          stolen_bases?: number
+          batting_average?: number
+          on_base_percentage?: number
+          slugging_percentage?: number
+          ops?: number
+        }
+        Update: {
+          season?: number
+          level?: string
+          team?: string
+          games?: number
+          at_bats?: number
+          hits?: number
+          doubles?: number
+          triples?: number
+          home_runs?: number
+          rbis?: number
+          runs?: number
+          walks?: number
+          strikeouts?: number
+          stolen_bases?: number
+          batting_average?: number
+          on_base_percentage?: number
+          slugging_percentage?: number
+          ops?: number
+        }
+      }
