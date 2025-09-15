@@ -389,3 +389,5 @@ export type Database = {
           ops?: number
         }
       }
+  }
+}
