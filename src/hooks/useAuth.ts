@@ -23,7 +23,7 @@ const createMockUser = (email: string): User => ({
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' || !import.meta.env.VITE_SUPABASE_URL
 
   useEffect(() => {
     if (isDemoMode) {
